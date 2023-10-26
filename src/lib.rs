@@ -201,16 +201,22 @@ impl Storage {
 
 #[test]
 fn sequence() {
-    let store: Storage = Storage::default();
-    println!("{}", store.current("test"));
-    for _ in 0..100 {
-        println!("{}", store.next("test"));
+    // Re-operation requires replacing db_path or cleaning up db_path
+    let store: Storage = Storage::new(&StorageConfig {
+        db_path: "test_sequence.db".to_string(),
+        ..Default::default()
+    });
+    // The first run starts at 0
+    assert_eq!(0, store.current("test"));
+    for i in 0..100 {
+        assert_eq!(i + 1, store.next("test"));
     }
 }
 
 #[test]
 fn eviction() {
     let store: Storage = Storage::new(&StorageConfig {
+        db_path: "test_eviction.db".to_string(),
         cache_time_to_live: Some(1),
         cache_max_capacity: Some(1024 * 1024 * 1024),
         cache_num_segments: 10,
@@ -237,26 +243,29 @@ fn eviction() {
         println!("{:?}", store.cache.get(&9999u32.to_string()));
         println!("{:?}", store.db.get(9999u32.to_string()));
     });
-    async_std::task::block_on(async_std::task::sleep(Duration::from_secs(10)));
+    async_std::task::block_on(async_std::task::sleep(Duration::from_secs(2)));
 }
 
 #[test]
-fn structured_data() {
-    #[derive(StorageData, Debug, Clone, Default, Deserialize, Serialize)]
+fn structured() {
+    #[derive(StorageData, Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
     struct Test {
         a: u32,
         b: String,
     }
 
-    let store: Storage = Storage::default();
+    let store: Storage = Storage::new(&StorageConfig {
+        db_path: "test_structured.db".to_string(),
+        ..Default::default()
+    });
     let test = Test {
         a: 1,
         b: "test".to_string(),
     };
     store.insert("test", test.clone());
-    println!("{:?}", store.get::<Test>("test"));
-    store.insert("test", test);
-    println!("{:?}", store.get::<Test>("test"));
+    assert_eq!(test, store.get::<Test>("test").unwrap());
+    store.insert("test", test.clone());
+    assert_eq!(test, store.get::<Test>("test").unwrap());
     store.remove::<Test>("test");
-    println!("{:?}", store.get::<Test>("test"));
+    assert_eq!(None, store.get::<Test>("test"));
 }
