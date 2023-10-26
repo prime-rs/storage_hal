@@ -7,17 +7,18 @@
     unused_extern_crates
 )]
 
-use moka::notification::RemovalCause;
-pub use storage_hal_derive::StorageData;
-
 use std::time::Duration;
 use std::{fmt::Debug, sync::Arc};
 
 use bytes::Bytes;
+use moka::notification::RemovalCause;
 use moka::sync::SegmentedCache;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sled::Db;
+use tracing::debug;
+
+pub use storage_hal_derive::StorageData;
 
 pub trait StorageData: Debug + Clone + Default + for<'a> Deserialize<'a> + Serialize {
     fn name() -> String;
@@ -49,8 +50,8 @@ impl Default for StorageConfig {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub cache: SegmentedCache<String, Bytes>,
-    pub db: Db,
+    cache: SegmentedCache<String, Bytes>,
+    db: Db,
 }
 
 impl Default for Storage {
@@ -68,11 +69,9 @@ impl Storage {
         let mut builder = SegmentedCache::builder(config.cache_num_segments)
             .weigher(|k: &String, v: &Bytes| (k.len() + v.len()) as u32)
             .eviction_listener(move |key, value, cause| {
-                tracing::debug!(
+                debug!(
                     "Evicted ({:?},{:?}) because {:?} by cache",
-                    key,
-                    value,
-                    cause
+                    key, value, cause
                 );
                 match cause {
                     RemovalCause::Explicit | RemovalCause::Expired => {
@@ -83,12 +82,7 @@ impl Storage {
                         } else {
                             db_clone.lock().remove(key.as_str()).unwrap();
                         }
-                        tracing::debug!(
-                            "Evicted ({:?},{:?}) because {:?} by db",
-                            key,
-                            value,
-                            cause
-                        );
+                        debug!("Evicted ({:?},{:?}) because {:?} by db", key, value, cause);
                     }
                     _ => {}
                 }
@@ -103,10 +97,19 @@ impl Storage {
             builder = builder.time_to_idle(Duration::from_secs(v))
         }
 
-        Self {
-            cache: builder.build(),
-            db,
-        }
+        let cache = builder.build();
+
+        // recover cache
+        db.iter().for_each(|r| {
+            if let Ok((k, v)) = r {
+                cache.insert(
+                    String::from_utf8_lossy(&k).to_string(),
+                    Bytes::from(v.to_vec()),
+                );
+            }
+        });
+
+        Self { cache, db }
     }
 }
 
@@ -150,7 +153,9 @@ impl Storage {
 
 // structured data key used in cache
 fn ckey<T: for<'a> Deserialize<'a> + StorageData>(key: &str) -> String {
-    format!(":/{}/{}", T::name(), key)
+    let ckey = format!(":/{}/{}", T::name(), key);
+    debug!("ckey: {}", ckey);
+    ckey
 }
 
 // structured data
