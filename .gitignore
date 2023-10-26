@@ -1,0 +1,9 @@
+/target
+.DS_Store
+Cargo.lock
+*_db
+*.db
+*.log
+*.pem
+.vscode
+.idea
