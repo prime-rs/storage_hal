@@ -7,6 +7,7 @@
     unused_extern_crates
 )]
 
+use moka::notification::RemovalCause;
 pub use storage_hal_derive::StorageData;
 
 use std::time::Duration;
@@ -67,14 +68,29 @@ impl Storage {
         let mut builder = SegmentedCache::builder(config.cache_num_segments)
             .weigher(|k: &String, v: &Bytes| (k.len() + v.len()) as u32)
             .eviction_listener(move |key, value, cause| {
-                tracing::debug!("Evicted ({:?},{:?}) because {:?}", key, value, cause);
-                if let Some(real_key) = key.strip_prefix(":/") {
-                    if let Some((tree, key)) = real_key.split_once('/') {
-                        let tree = db_clone.lock().open_tree(tree).unwrap();
-                        tree.remove(key).unwrap();
+                tracing::debug!(
+                    "Evicted ({:?},{:?}) because {:?} by cache",
+                    key,
+                    value,
+                    cause
+                );
+                match cause {
+                    RemovalCause::Explicit | RemovalCause::Expired => {
+                        if let Some(real_key) = key.strip_prefix(":/") {
+                            let (tree, key) = real_key.split_once('/').unwrap();
+                            let tree = db_clone.lock().open_tree(tree).unwrap();
+                            tree.remove(key).unwrap();
+                        } else {
+                            db_clone.lock().remove(key.as_str()).unwrap();
+                        }
+                        tracing::debug!(
+                            "Evicted ({:?},{:?}) because {:?} by db",
+                            key,
+                            value,
+                            cause
+                        );
                     }
-                } else {
-                    db_clone.lock().remove(key.as_str()).unwrap();
+                    _ => {}
                 }
             });
         if let Some(v) = config.cache_max_capacity {
@@ -237,6 +253,8 @@ fn structured_data() {
         a: 1,
         b: "test".to_string(),
     };
+    store.insert("test", test.clone());
+    println!("{:?}", store.get::<Test>("test"));
     store.insert("test", test);
     println!("{:?}", store.get::<Test>("test"));
     store.remove::<Test>("test");
