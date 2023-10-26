@@ -104,6 +104,16 @@ impl Storage {
         Self { cache, db }
     }
 
+    pub fn recover_root(&self) {
+        self.db.iter().for_each(|r| {
+            if let Ok((k, v)) = r {
+                let key = String::from_utf8_lossy(&k).to_string();
+                debug!("Recover cache for root: {:?}", key);
+                self.cache.insert(key, Bytes::from(v.to_vec()));
+            }
+        });
+    }
+
     pub fn recover<T: StorageData>(&self) {
         if let Ok(tree) = self.db.open_tree(T::name()) {
             tree.iter().for_each(|r| {
