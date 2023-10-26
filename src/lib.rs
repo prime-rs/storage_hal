@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 #![warn(
     missing_copy_implementations,
     missing_debug_implementations,
@@ -54,6 +53,9 @@ pub struct Storage {
     db: Db,
 }
 
+unsafe impl Send for Storage {}
+unsafe impl Sync for Storage {}
+
 impl Default for Storage {
     fn default() -> Self {
         // By default, This cache will hold up to 1GiB of values.
@@ -99,17 +101,24 @@ impl Storage {
 
         let cache = builder.build();
 
-        // recover cache
-        db.iter().for_each(|r| {
-            if let Ok((k, v)) = r {
-                cache.insert(
-                    String::from_utf8_lossy(&k).to_string(),
-                    Bytes::from(v.to_vec()),
-                );
-            }
-        });
-
         Self { cache, db }
+    }
+
+    pub fn recover<T: StorageData>(&self) {
+        if let Ok(tree) = self.db.open_tree(T::name()) {
+            tree.iter().for_each(|r| {
+                if let Ok((k, v)) = r {
+                    let key = String::from_utf8_lossy(&k);
+                    debug!("Recover cache for tree({}): {:?}", T::name(), key);
+                    self.cache.insert(ckey::<T>(&key), Bytes::from(v.to_vec()));
+                }
+            });
+        }
+    }
+
+    pub fn run_pending_tasks(&self) {
+        self.cache.run_pending_tasks();
+        self.db.flush().unwrap();
     }
 }
 
@@ -154,7 +163,6 @@ impl Storage {
 // structured data key used in cache
 fn ckey<T: for<'a> Deserialize<'a> + StorageData>(key: &str) -> String {
     let ckey = format!(":/{}/{}", T::name(), key);
-    debug!("ckey: {}", ckey);
     ckey
 }
 
@@ -189,17 +197,18 @@ impl Storage {
     }
 
     pub fn insert<T: Serialize + StorageData>(&self, key: &str, value: T) -> Option<T> {
-        let tree = self.db.open_tree(T::name()).unwrap();
         if let Ok(value_bytes) = bincode::serialize(&value) {
-            if tree.insert(key, value_bytes.clone()).is_ok() {
-                self.cache.insert(ckey::<T>(key), Bytes::from(value_bytes));
-                return Some(value);
-            }
+            let tree = self.db.open_tree(T::name()).unwrap();
+            tree.insert(key, value_bytes.clone()).unwrap();
+            self.cache.insert(ckey::<T>(key), Bytes::from(value_bytes));
+            return Some(value);
         }
         None
     }
 
     pub fn remove<T: StorageData>(&self, key: &str) {
+        let tree = self.db.open_tree(T::name()).unwrap();
+        tree.remove(key).unwrap();
         self.cache.remove(&ckey::<T>(key));
     }
 }
@@ -233,7 +242,10 @@ fn eviction() {
             store_clone
                 .cache
                 .insert(i.to_string(), Bytes::from(i.to_string()));
-            store_clone.db.insert(i.to_string(), i.to_string()).unwrap();
+            store_clone
+                .db
+                .insert(i.to_string(), i.to_string().as_bytes())
+                .unwrap();
         }
 
         println!("{:?}", store_clone.cache.get(&9999u32.to_string()));

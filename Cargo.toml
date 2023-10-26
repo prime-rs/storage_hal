@@ -1,6 +1,6 @@
 [package]
 name = "storage_hal"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["JLer <jlerxky@live.com>"]
 edition = "2021"
 description = "A storage hybrid access layer"
