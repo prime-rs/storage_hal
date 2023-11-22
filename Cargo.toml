@@ -26,3 +26,12 @@ tracing = "0.1"
 
 [dev-dependencies]
 async-std = "1.12"
+
+[lints.rust]
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+unused_crate_dependencies = "warn"
+unused_extern_crates = "warn"
+
+[lints.clippy]
+missing_const_for_fn = "warn"

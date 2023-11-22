@@ -16,3 +16,13 @@ proc-macro = true
 [dependencies]
 syn = "2.0"
 quote = "1.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+unused_crate_dependencies = "warn"
+unused_extern_crates = "warn"
+
+[lints.clippy]
+missing_const_for_fn = "warn"

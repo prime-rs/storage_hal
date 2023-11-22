@@ -1,11 +1,3 @@
-#![warn(
-    missing_copy_implementations,
-    missing_debug_implementations,
-    unused_crate_dependencies,
-    clippy::missing_const_for_fn,
-    unused_extern_crates
-)]
-
 use std::time::Duration;
 use std::{fmt::Debug, sync::Arc};
 
