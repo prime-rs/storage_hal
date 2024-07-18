@@ -239,7 +239,8 @@ fn eviction() {
         ..Default::default()
     });
     let store_clone = store.clone();
-    async_std::task::spawn(async move {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.spawn(async move {
         for i in 0..10000u32 {
             store_clone
                 .cache
@@ -252,17 +253,19 @@ fn eviction() {
 
         println!("{:?}", store_clone.cache.get(&9999u32.to_string()));
         println!("{:?}", store_clone.db.get(9999u32.to_string()));
-        async_std::task::sleep(Duration::from_millis(1100)).await;
+        tokio::time::sleep(Duration::from_millis(700)).await;
         println!("{:?}", store.cache.get(&9999u32.to_string()));
         println!("{:?}", store.db.get(9999u32.to_string()));
-        async_std::task::sleep(Duration::from_millis(300)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
         println!("{:?}", store.cache.get(&9999u32.to_string()));
         println!("{:?}", store.db.get(9999u32.to_string()));
-        async_std::task::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
         println!("{:?}", store.cache.get(&9999u32.to_string()));
         println!("{:?}", store.db.get(9999u32.to_string()));
     });
-    async_std::task::block_on(async_std::task::sleep(Duration::from_secs(2)));
+    rt.block_on(async {
+        tokio::time::sleep(Duration::from_millis(2000)).await;
+    });
 }
 
 #[test]
