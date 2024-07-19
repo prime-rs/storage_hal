@@ -2,11 +2,12 @@ use std::time::Duration;
 use std::{fmt::Debug, sync::Arc};
 
 use bytes::Bytes;
+use color_eyre::eyre::{eyre, Result};
 use moka::notification::RemovalCause;
 use moka::sync::SegmentedCache;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use sled::Db;
+use sled::{CompareAndSwapSuccess, Db};
 use tracing::debug;
 
 pub use storage_hal_derive::StorageData;
@@ -212,6 +213,32 @@ impl Storage {
         let tree = self.db.open_tree(T::name()).unwrap();
         tree.remove(key).unwrap();
         self.cache.remove(&ckey::<T>(key));
+    }
+
+    pub fn cas<T: Serialize + StorageData>(
+        &self,
+        key: &str,
+        old: Option<T>,
+        new: Option<T>,
+    ) -> Result<()> {
+        let old_bytes = old.map(|v| bincode::serialize(&v).unwrap_or_default());
+        let new_bytes = new.map(|v| bincode::serialize(&v).unwrap_or_default());
+        let tree = self.db.open_tree(T::name())?;
+        let cas_result = tree.compare_and_swap(key, old_bytes, new_bytes);
+        match cas_result {
+            Ok(Ok(CompareAndSwapSuccess { new_value, .. })) => match new_value {
+                Some(new) => {
+                    self.cache.insert(ckey::<T>(key), Bytes::from(new.to_vec()));
+                }
+                None => {
+                    self.cache.remove(&ckey::<T>(key));
+                }
+            },
+            _ => {
+                return Err(eyre!("cas failed"));
+            }
+        }
+        Ok(())
     }
 }
 
