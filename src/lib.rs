@@ -16,6 +16,12 @@ pub trait StorageData: Debug + Clone + Default + for<'a> Deserialize<'a> + Seria
     fn name() -> String;
 }
 
+impl StorageData for String {
+    fn name() -> String {
+        "String".to_string()
+    }
+}
+
 const SEQUENCE_TREE_NAME: &str = "SEQUENCE";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
